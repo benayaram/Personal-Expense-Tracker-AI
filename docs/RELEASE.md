@@ -36,8 +36,10 @@ The application ID is `app.moneywise.personal`. Confirm ownership/uniqueness bef
 - Small display, large text, keyboard open, rotation, talkback and dark-system setting behavior.
 - Notifications: opt-in, supported app success alert, failed alert exclusion, repeat alert, cross-app duplicate review, process death, permission revocation and queue capacity.
 - Budget overspend, overdue/completed goal, due day 31 in a short month, incomplete-month forecast warning and debt payment below interest.
-- Offline startup, offline coach fallback, bad server token, model refusal and network timeout.
+- Offline startup, offline coach fallback, invalid Gemini API key, model refusal and network timeout.
 - Backup export, validated restore, malformed restore preserving records, encrypted storage failure and deletion pausing capture.
 - Signed APK installation and update over prior signed builds without data loss.
 
-Publish a privacy policy, complete Play Data Safety declarations accurately (including optional AI sharing and notification access), and review Google's current policies. The repository does not include a public backend deployment or a completed Play submission.
+For your private installation, no hosting or Play submission is required. If publishing later, supply an appropriate privacy policy, complete Play Data Safety declarations and review Google's current policies.
+
+Debug and production APKs normally have different signing certificates. Android will not install a differently signed release as an update over the debug app. Export a secure backup first, uninstall the debug app if necessary, install the production build, and restore the backup. Keep the production signing certificate consistent for future updates.

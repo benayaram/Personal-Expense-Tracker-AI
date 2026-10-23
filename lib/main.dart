@@ -437,18 +437,31 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           ],
         ),
         const SizedBox(height: 12),
-        panel('Monthly report', [
-          amountRow('Income', ledger.total(EntryKind.income, selectedMonth)),
-          amountRow(
-            'Previous month expenses',
-            ledger.total(
-              EntryKind.expense,
-              DateTime(selectedMonth.year, selectedMonth.month - 1),
-            ),
+        Card(
+          child: ExpansionTile(
+            title: const Text('Monthly report'),
+            children: [
+              panel('Spending overview', [
+                amountRow(
+                  'Income',
+                  ledger.total(EntryKind.income, selectedMonth),
+                ),
+                amountRow(
+                  'Previous month expenses',
+                  ledger.total(
+                    EntryKind.expense,
+                    DateTime(selectedMonth.year, selectedMonth.month - 1),
+                  ),
+                ),
+                amountRow(
+                  'Expenses',
+                  ledger.total(EntryKind.expense, selectedMonth),
+                ),
+                ...spendingChart(selectedMonth),
+              ]),
+            ],
           ),
-          amountRow('Expenses', ledger.total(EntryKind.expense, selectedMonth)),
-          ...spendingChart(selectedMonth),
-        ]),
+        ),
         if (entries.isEmpty)
           empty('No matching entries in this month.')
         else
@@ -460,6 +473,28 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   Widget plan() => ListView(
     padding: const EdgeInsets.all(16),
     children: [
+      panel('Opening balance', [
+        amountRow('Before your first recorded entry', ledger.openingBalance),
+        const Text(
+          'Money you already had before tracking began. This changes the tracked balance without counting as income.',
+        ),
+        TextButton(
+          onPressed: () async {
+            final values = await amountDialog(
+              'Opening balance',
+              ['Starting balance'],
+              [ledger.openingBalance],
+              allowZero: true,
+            );
+            if (values != null) {
+              await perform(
+                () => store.change((l) => l.openingBalance = values[0]),
+              );
+            }
+          },
+          child: const Text('Set opening balance'),
+        ),
+      ]),
       panel('Monthly commitments', [
         amountRow('Reserved for upcoming bills', ledger.reservedBills),
         amountRow('Planned savings', ledger.plannedSavings),
@@ -645,16 +680,16 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       ]),
       panel('Ask your AI coach', [
         const Text(
-          'Optional cloud AI. With your consent, category totals, budgets, goal names and your question are sent to your configured server. Merchant names and notification text stay on your device.',
+          'Optional cloud AI. With your consent, category totals, budgets, goal names and your question are sent directly to Google Gemini. No separate server is needed. Merchant names and notification text stay on your device.',
         ),
         const SizedBox(height: 12),
-        if (store.aiUrl.isEmpty) ...[
+        if (store.geminiKey.isEmpty) ...[
           const Text(
             'Cloud coaching is not connected. Local insights above work without an API key.',
           ),
           TextButton(
             onPressed: coachSettings,
-            child: const Text('Configure private coaching server'),
+            child: const Text('Connect Gemini'),
           ),
         ] else ...[
           TextField(
@@ -1222,7 +1257,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     }
     if (!await confirm(
       'Share your summary?',
-      'Your question, goal names and category totals will be sent to your coaching server and AI provider. Avoid including account numbers or personal information.',
+      'Your question, goal names and category totals will be sent to Google Gemini directly. Avoid including account numbers or personal information.',
     )) {
       return;
     }
@@ -1230,15 +1265,17 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     final epoch = coachEpoch;
     try {
       final answer = await requestCoaching(
-        url: store.aiUrl,
-        token: store.aiToken,
+        apiKey: store.geminiKey,
+        model: store.geminiModel,
         ledger: ledger,
         question: question.text.trim(),
       );
       if (mounted && epoch == coachEpoch) setState(() => coachAnswer = answer);
+    } on CoachException catch (e) {
+      message(e.message);
     } catch (_) {
       message(
-        'Cloud coaching is unavailable. Check your server settings or use local insights.',
+        'Could not reach Gemini. Your entries and local insights still work offline.',
       );
     } finally {
       if (mounted) setState(() => coachBusy = false);
@@ -1246,43 +1283,120 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   }
 
   Future<void> coachSettings() async {
-    final url = await textInput(
-      'Private coaching server',
-      'HTTPS URL',
-      initial: store.aiUrl,
-    );
-    if (url == null || !mounted) return;
-    final token = TextEditingController();
-    final value = await showDialog<String>(
+    final apiKeyController = TextEditingController();
+    final model = TextEditingController(text: store.geminiModel);
+    final form = GlobalKey<FormState>();
+    var saving = false;
+    await showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Server access token'),
-        content: TextField(
-          controller: token,
-          obscureText: true,
-          enableSuggestions: false,
-          autocorrect: false,
-          decoration: const InputDecoration(
-            labelText: 'Access token, not your Gemini API key',
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, update) => AlertDialog(
+          title: const Text('Connect Gemini'),
+          content: SingleChildScrollView(
+            child: Form(
+              key: form,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Use your own Gemini API key for this personal app. It is encrypted on this phone and excluded from backups. Requests go directly to Google when you ask for advice. API usage may have quotas or charges.',
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: apiKeyController,
+                    obscureText: true,
+                    enableSuggestions: false,
+                    autocorrect: false,
+                    maxLength: 512,
+                    decoration: InputDecoration(
+                      labelText: store.geminiKey.isEmpty
+                          ? 'Gemini API key'
+                          : 'New key (blank keeps current)',
+                    ),
+                    validator: (v) =>
+                        store.geminiKey.isEmpty && (v?.trim().isEmpty ?? true)
+                        ? 'Enter your API key.'
+                        : null,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: model,
+                    maxLength: 100,
+                    decoration: const InputDecoration(
+                      labelText: 'Gemini model',
+                    ),
+                    validator: (v) =>
+                        RegExp(
+                          r'^gemini-[A-Za-z0-9._-]+$',
+                        ).hasMatch(v?.trim() ?? '')
+                        ? null
+                        : 'Enter a Gemini model name.',
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Use a model available to your Google project. Notification capture and local insights do not depend on Gemini.',
+                  ),
+                ],
+              ),
+            ),
           ),
+          actions: [
+            if (store.geminiKey.isNotEmpty)
+              TextButton(
+                onPressed: saving
+                    ? null
+                    : () async {
+                        update(() => saving = true);
+                        try {
+                          await store.configureCoach(store.geminiModel, '');
+                          if (mounted) {
+                            setState(() {
+                              coachEpoch++;
+                              coachAnswer = null;
+                            });
+                          }
+                          if (ctx.mounted) Navigator.pop(ctx);
+                        } catch (_) {
+                          if (ctx.mounted) update(() => saving = false);
+                          message('Could not remove the key. Please retry.');
+                        }
+                      },
+                child: const Text('Remove key'),
+              ),
+            TextButton(
+              onPressed: saving ? null : () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: saving
+                  ? null
+                  : () async {
+                      if (!form.currentState!.validate()) return;
+                      update(() => saving = true);
+                      try {
+                        await store.configureCoach(
+                          model.text.trim(),
+                          apiKeyController.text.trim().isEmpty
+                              ? store.geminiKey
+                              : apiKeyController.text.trim(),
+                        );
+                        if (ctx.mounted) Navigator.pop(ctx);
+                      } catch (_) {
+                        if (ctx.mounted) update(() => saving = false);
+                        message(
+                          'Could not save the Gemini settings. Please retry.',
+                        );
+                      }
+                    },
+              child: Text(saving ? 'Saving…' : 'Save'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, token.text.trim()),
-            child: const Text('Save'),
-          ),
-        ],
       ),
     );
-    if (value != null) {
-      await perform(() => store.configureCoach(url.trim(), value));
-    }
     await Future<void>.delayed(const Duration(milliseconds: 300));
-    token.dispose();
+    apiKeyController.dispose();
+    model.dispose();
   }
 
   Future<void> captureInbox() async {
@@ -1398,7 +1512,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
               },
             ),
             ListTile(
-              title: const Text('Optional AI server'),
+              title: const Text('Gemini API settings'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () {
                 Navigator.pop(ctx);

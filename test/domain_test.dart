@@ -19,6 +19,8 @@ void main() {
     sourceId: source,
   );
   test('parses exact paise and rejects malformed amounts', () {
+    expect(money(-1), '−₹0.01');
+    expect(money(9007199254740993), '₹90071992547409.93');
     expect(parseMoney('1250.05'), 125005);
     expect(parseMoney('0.01'), 1);
     for (final value in [
@@ -123,4 +125,13 @@ void main() {
       DateTime(2027, 1, 10),
     );
   });
+  test(
+    'opening balance affects available funds but never inflates income reports',
+    () {
+      final ledger = Ledger(openingBalance: 100000);
+      expect(ledger.balance, 100000);
+      expect(ledger.total(EntryKind.income, now), 0);
+      expect(Ledger.decode(ledger.encode()).openingBalance, 100000);
+    },
+  );
 }

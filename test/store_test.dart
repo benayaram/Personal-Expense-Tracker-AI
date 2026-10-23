@@ -103,4 +103,28 @@ void main() {
     await b.load();
     expect(b.ledger.plannedSavings, 10000);
   });
+  test(
+    'personal Gemini key survives restart but is excluded from ledger backup',
+    () async {
+      final a = AppStore();
+      await a.load();
+      await a.configureCoach('gemini-2.5-flash', 'unit-test-not-a-real-key');
+      expect(a.ledger.encode(), isNot(contains('unit-test-not-a-real-key')));
+      final b = AppStore();
+      await b.load();
+      expect(b.geminiKey, 'unit-test-not-a-real-key');
+      expect(b.geminiModel, 'gemini-2.5-flash');
+    },
+  );
+  test('removing Gemini key preserves financial data', () async {
+    final a = AppStore();
+    await a.load();
+    await a.change((l) => l.openingBalance = 12345);
+    await a.configureCoach('gemini-2.5-flash', 'unit-test-not-a-real-key');
+    await a.configureCoach('gemini-2.5-flash', '');
+    final b = AppStore();
+    await b.load();
+    expect(b.geminiKey, isEmpty);
+    expect(b.ledger.balance, 12345);
+  });
 }

@@ -24,14 +24,15 @@ class AppStore extends ChangeNotifier {
   Ledger ledger = Ledger();
   bool loaded = false, busy = false;
   String? failure;
-  String aiUrl = '', aiToken = '';
+  String geminiKey = '', geminiModel = 'gemini-2.5-flash';
   Future<void> load() async {
     try {
       final raw = await _storage.read(key: 'ledger.v1');
       ledger = raw == null ? Ledger() : Ledger.decode(raw);
       validateLedger(ledger);
-      aiUrl = await _storage.read(key: 'coach.url') ?? '';
-      aiToken = await _storage.read(key: 'coach.token') ?? '';
+      geminiModel =
+          await _storage.read(key: 'gemini.model') ?? 'gemini-2.5-flash';
+      geminiKey = await _storage.read(key: 'gemini.key') ?? '';
       loaded = true;
       failure = null;
     } catch (_) {
@@ -76,19 +77,17 @@ class AppStore extends ChangeNotifier {
     }
   }
 
-  Future<void> configureCoach(String url, String token) async {
-    if (url.isNotEmpty &&
-        (Uri.tryParse(url)?.scheme != 'https' ||
-            Uri.tryParse(url)?.host.isEmpty != false)) {
-      throw const FormatException('Use an HTTPS server URL.');
+  Future<void> configureCoach(String model, String apiKey) async {
+    if (!RegExp(r'^gemini-[A-Za-z0-9._-]+$').hasMatch(model)) {
+      throw const FormatException('Enter a valid Gemini model name.');
     }
-    await _storage.write(key: 'coach.token', value: token);
-    await _storage.write(
-      key: 'coach.url',
-      value: url.replaceFirst(RegExp(r'/+$'), ''),
-    );
-    aiUrl = url.replaceFirst(RegExp(r'/+$'), '');
-    aiToken = token;
+    if (apiKey.length > 512 || apiKey.contains(RegExp(r'[\r\n]'))) {
+      throw const FormatException('Enter a valid API key without line breaks.');
+    }
+    await _storage.write(key: 'gemini.key', value: apiKey);
+    await _storage.write(key: 'gemini.model', value: model);
+    geminiKey = apiKey;
+    geminiModel = model;
     notifyListeners();
   }
 
@@ -103,8 +102,8 @@ class AppStore extends ChangeNotifier {
       }
       await _storage.deleteAll();
       ledger = Ledger();
-      aiUrl = '';
-      aiToken = '';
+      geminiKey = '';
+      geminiModel = 'gemini-2.5-flash';
       failure = null;
       loaded = true;
     } finally {

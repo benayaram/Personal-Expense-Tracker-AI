@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -6,7 +7,20 @@ import 'package:moneywise/coach.dart';
 import 'package:moneywise/domain.dart';
 
 void main() {
-  test('coaching egress excludes merchants and source IDs', () async {
+  Future<String> ask(
+    http.Client client, {
+    String key = 'unit-test-not-a-real-key',
+    String model = 'gemini-2.5-flash',
+    Duration timeout = const Duration(seconds: 1),
+  }) => requestCoaching(
+    apiKey: key,
+    model: model,
+    ledger: Ledger(),
+    question: 'How can I save?',
+    client: client,
+    timeout: timeout,
+  );
+  test('calls Google directly and excludes merchants and source IDs', () async {
     final ledger = Ledger();
     ledger.add(
       MoneyEntry(
@@ -20,19 +34,43 @@ void main() {
       ),
     );
     final client = MockClient((request) async {
-      expect(request.url.toString(), 'https://coach.example/v1/coach');
-      expect(request.headers['Authorization'], 'Bearer server-access-only');
-      expect(request.body, isNot(contains('Private Merchant')));
-      expect(request.body, isNot(contains('private-notification-id')));
-      expect(request.body, isNot(contains('private-entry-id')));
+      expect(request.url.host, 'generativelanguage.googleapis.com');
+      expect(request.url.scheme, 'https');
+      expect(request.url.query, isEmpty);
+      expect(request.headers['x-goog-api-key'], 'unit-test-not-a-real-key');
+      for (final value in [
+        'Private Merchant',
+        'private-notification-id',
+        'private-entry-id',
+      ]) {
+        expect(request.body, isNot(contains(value)));
+      }
       final body = jsonDecode(request.body) as Map<String, dynamic>;
-      expect(body['summary']['categorySpendingPaise']['Dining'], 125005);
-      return http.Response('{"answer":"Review dining spending."}', 200);
+      final summary = jsonDecode(body['contents'][0]['parts'][0]['text']);
+      expect(summary['summary']['categorySpendingPaise']['Dining'], 125005);
+      expect(
+        body['systemInstruction']['parts'][0]['text'],
+        contains('100 paise = INR 1'),
+      );
+      return http.Response(
+        jsonEncode({
+          'candidates': [
+            {
+              'content': {
+                'parts': [
+                  {'text': 'Review dining spending.'},
+                ],
+              },
+            },
+          ],
+        }),
+        200,
+      );
     });
     expect(
       await requestCoaching(
-        url: 'https://coach.example',
-        token: 'server-access-only',
+        apiKey: 'unit-test-not-a-real-key',
+        model: 'gemini-2.5-flash',
         ledger: ledger,
         question: 'How can I save?',
         client: client,
@@ -41,45 +79,66 @@ void main() {
     );
     client.close();
   });
+  test('provider errors never disclose response content or API key', () async {
+    final client = MockClient(
+      (_) async => http.Response('private-provider-error', 403),
+    );
+    await expectLater(
+      ask(client),
+      throwsA(
+        isA<CoachException>().having(
+          (e) => e.message,
+          'message',
+          isNot(contains('private-provider-error')),
+        ),
+      ),
+    );
+    client.close();
+  });
+  test('usage limits keep a useful offline fallback message', () async {
+    final client = MockClient((_) async => http.Response('', 429));
+    await expectLater(
+      ask(client),
+      throwsA(
+        isA<CoachException>().having(
+          (e) => e.message,
+          'message',
+          contains('local insights still work'),
+        ),
+      ),
+    );
+    client.close();
+  });
+  test('empty or blocked model response fails clearly', () async {
+    final client = MockClient(
+      (_) async => http.Response('{"candidates":[]}', 200),
+    );
+    await expectLater(ask(client), throwsA(isA<CoachException>()));
+    client.close();
+  });
   test(
-    'provider failure is surfaced without leaking response content',
+    'invalid model cannot redirect financial summaries to another host',
     () async {
-      final client = MockClient(
-        (_) async => http.Response('private-provider-error', 503),
-      );
+      final client = MockClient((_) async {
+        fail('No request may be made');
+      });
       await expectLater(
-        requestCoaching(
-          url: 'https://coach.example',
-          token: 'test',
-          ledger: Ledger(),
-          question: 'Help',
-          client: client,
-        ),
-        throwsA(
-          isA<StateError>().having(
-            (e) => e.toString(),
-            'message',
-            isNot(contains('private-provider-error')),
-          ),
-        ),
+        ask(client, model: 'https://other.example'),
+        throwsA(isA<CoachException>()),
+      );
+      await expectLater(ask(client, key: ''), throwsA(isA<CoachException>()));
+      client.close();
+    },
+  );
+  test(
+    'slow requests time out rather than blocking the app indefinitely',
+    () async {
+      final client = MockClient((_) => Completer<http.Response>().future);
+      await expectLater(
+        ask(client, timeout: const Duration(milliseconds: 10)),
+        throwsA(isA<TimeoutException>()),
       );
       client.close();
     },
   );
-  test('HTTP coaching destinations are rejected before sending data', () async {
-    final client = MockClient((_) async {
-      fail('No request may be sent over HTTP');
-    });
-    await expectLater(
-      requestCoaching(
-        url: 'http://coach.example',
-        token: 'test',
-        ledger: Ledger(),
-        question: 'Help',
-        client: client,
-      ),
-      throwsFormatException,
-    );
-    client.close();
-  });
 }

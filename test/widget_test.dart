@@ -131,4 +131,30 @@ void main() {
       expect(tester.takeException(), isNull, reason: label);
     }
   });
+  testWidgets('Gemini key can be configured and removed inside the app', (
+    tester,
+  ) async {
+    final store = AppStore()..loaded = true;
+    await tester.pumpWidget(MoneywiseApp(store: store));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Settings and privacy'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Gemini API settings'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Gemini API key'),
+      'unit-test-not-a-real-key',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+    expect(store.geminiKey, 'unit-test-not-a-real-key');
+    expect(store.ledger.encode(), isNot(contains('unit-test-not-a-real-key')));
+    await tester.tap(find.byTooltip('Settings and privacy'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Gemini API settings'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Remove key'));
+    await tester.pumpAndSettle();
+    expect(store.geminiKey, isEmpty);
+  });
 }

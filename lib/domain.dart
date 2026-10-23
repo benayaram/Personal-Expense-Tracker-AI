@@ -124,13 +124,14 @@ class Ledger {
   final Map<String, int> budgets;
   final List<Goal> goals;
   final List<RecurringBill> bills;
-  int reservedBills, plannedSavings;
+  int reservedBills, plannedSavings, openingBalance;
   Ledger({
     List<MoneyEntry>? entries,
     List<String>? categories,
     Map<String, int>? budgets,
     List<Goal>? goals,
     List<RecurringBill>? bills,
+    this.openingBalance = 0,
     this.reservedBills = 0,
     this.plannedSavings = 0,
   }) : entries = entries ?? [],
@@ -158,7 +159,7 @@ class Ledger {
     now,
   ).where((e) => e.kind == kind).fold(0, (sum, e) => sum + e.paise);
   int get balance => entries.fold(
-    0,
+    openingBalance,
     (sum, e) =>
         sum +
         switch (e.kind) {
@@ -205,7 +206,7 @@ class Ledger {
     }
     if (entries.isEmpty) {
       result.add(
-        'Add your opening balance as income, then record expenses to build a useful plan.',
+        'Set your opening balance under Plan, then record income and expenses to build a useful plan.',
       );
     }
     if (goals.isEmpty) {
@@ -228,6 +229,7 @@ class Ledger {
     'categories': categories,
     'budgets': budgets,
     'goals': goals.map((g) => g.toJson()).toList(),
+    'openingBalance': openingBalance,
     'reservedBills': reservedBills,
     'plannedSavings': plannedSavings,
   });
@@ -248,6 +250,7 @@ class Ledger {
       goals: (j['goals'] as List)
           .map((g) => Goal.fromJson(Map<String, dynamic>.from(g)))
           .toList(),
+      openingBalance: (j['openingBalance'] as int?) ?? 0,
       reservedBills: j['reservedBills'] as int,
       plannedSavings: j['plannedSavings'] as int,
     );
@@ -277,6 +280,8 @@ void validateLedger(Ledger l) {
       l.categories.length > 500 ||
       l.categories.toSet().length != l.categories.length ||
       l.categories.any((c) => c.trim().isEmpty || c.length > 60) ||
+      l.openingBalance < 0 ||
+      l.openingBalance > 99999999999 ||
       l.reservedBills < 0 ||
       l.plannedSavings < 0 ||
       l.reservedBills > 99999999999 ||
@@ -295,6 +300,7 @@ void validateLedger(Ledger l) {
   for (final e in l.entries) {
     if (e.id.isEmpty ||
         e.id.length > 128 ||
+        (e.sourceId != null && e.sourceId!.length > 128) ||
         e.merchant.trim().isEmpty ||
         e.merchant.length > 80 ||
         !l.categories.contains(e.category) ||
@@ -336,5 +342,10 @@ void validateLedger(Ledger l) {
         !l.categories.contains(e.key) || e.value <= 0 || e.value > 99999999999,
   )) {
     throw const FormatException('Invalid budgets');
+  }
+  if (l.encode().length > 10000000) {
+    throw const FormatException(
+      'Local ledger capacity reached (10 MB). Keep a backup and archive older records before adding more.',
+    );
   }
 }
