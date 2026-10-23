@@ -29,3 +29,11 @@ The app calls Gemini directly from the phone. No hosted backend or Render deploy
 The pinned Android build emits compatibility/deprecation warnings for legacy Kotlin/Gradle configuration, Java 8 settings in a dependency and SDK XML metadata. The current pinned toolchain builds and tests successfully; upgrading Gradle/Flutter or storage plugins requires a deliberate compatibility review.
 
 This is an installable evaluation APK. Tests do not prove the absence of hidden bugs or replace real-device checks. See RELEASE.md for production signing and acceptance gates. No app-store publication is implied.
+
+## Download package
+
+The same verified APK is provided inside `downloads/Moneywise-Android.zip` for download from GitHub. The enclosed APK hash was checked against the APK checksum above after compression. No APK bytes or signatures were changed.
+
+ZIP size: 75416325 bytes.
+
+ZIP SHA256: `75aa501cb4acf91f1bf742645deaba0e5601ba22c1763ec8024396b3ebb0f1fb`

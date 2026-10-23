@@ -6,6 +6,10 @@ A simple Flutter Android expense tracker and savings companion for personal use.
 
 **Release status:** evaluation build; see [validation evidence](docs/VALIDATION.md). Production signing and physical-device acceptance remain release gates. No zero-bug claim is made.
 
+## Install on your phone
+
+[Download the Android package](downloads/Moneywise-Android.zip?raw=true) (about 75 MB). Extract the ZIP and open **Moneywise-1.0.0.apk**. See [download instructions](downloads/README.md).
+
 ## Documents
 
 - [Project report and brief](docs/PROJECT_BRIEF.md)
