@@ -1,5 +1,3 @@
-> Version 1.0.1 is a manual-entry evaluation build. The notification listener has been removed. Do not follow historical instructions to enable notification access or override Android restricted settings. Keep Play Protect enabled. Installation and Play Protect assessment require checking the new APK on the owner's device.
-
 # Android development and release
 
 ## Prerequisites
@@ -14,7 +12,7 @@ flutter build apk --debug
 cd android
 ```
 
-Install an evaluation build with `adb install -r build/app/outputs/flutter-apk/app-debug.apk` from the project root. Version 1.0.1 has no notification listener or notification-access settings. Do not override Play Protect or enable restricted settings to work around an installation block.
+Install an evaluation build with `adb install -r build/app/outputs/flutter-apk/app-debug.apk` from the project root. Version 1.1.0 has no notification listener or notification-access settings. Optional voice input declares RECORD_AUDIO and requests it only on explicit use. Do not override Play Protect or enable restricted settings to work around an installation block.
 
 ## Production signing
 The release build deliberately has no debug-signing fallback. Create and protect your own signing key using Android's official signing workflow; do not commit the key or passwords. Losing this key can prevent future updates for sideloaded installations. Prefer Play App Signing for Play distribution.
@@ -35,7 +33,9 @@ The application ID is `app.moneywise.personal`. Confirm ownership/uniqueness bef
 ## Device acceptance checklist
 - Fresh install, opening balance, income/expense/transfer entry, editing, deleting and restart persistence.
 - Small display, large text, keyboard open, rotation, talkback and dark-system setting behavior.
-- Confirm notification-access settings and capture features are absent. Validate manual income/expense/transfer entry and restart persistence.
+- Confirm notification access is absent; validate manual income/expense/transfer entry, category editing and restart persistence.
+- Microphone grant/deny, missing recognition service, voice transcript review (no auto-submit), timeout, cancel and background stop. Check local-insight and Gemini-answer playback, long answer chunking, stop, missing voices and background stop.
+- Show/hide an existing key; model dropdown, live model loading with a valid/invalid key and custom model selection.
 - Budget overspend, overdue/completed goal, due day 31 in a short month, incomplete-month forecast warning and debt payment below interest.
 - Offline startup, offline coach fallback, invalid Gemini API key, model refusal and network timeout.
 - Backup export, validated restore, malformed restore preserving records, encrypted storage failure and deletion pausing capture.

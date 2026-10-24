@@ -1,13 +1,17 @@
-# Moneywise privacy design
+# Moneywise 1.1 privacy
 
-Moneywise is a personal Android app. It has no hosted backend, login database, advertising SDK or analytics SDK. Transactions, goals, budgets, Gemini settings and the API key are stored encrypted on your phone. Android cloud backup and device-transfer backup are excluded, and Android screenshots are blocked. An unlocked or compromised phone can still expose information; use a device lock.
+Moneywise stores the ledger and settings encrypted on your Android phone. It has no hosted backend, account database, advertising SDK or analytics SDK. Android cloud backup and device-transfer rules exclude app data; Android screenshots are blocked. Use a device lock; an unlocked or compromised phone can still expose information.
 
-Version 1.0.1 does not declare a notification listener or provide notification-access settings. It cannot automatically read payment notifications. Transactions are entered manually, with editable category suggestions. No SMS, contacts, call-log, accessibility-service or overlay access is requested.
+The notification listener remains removed. The app cannot automatically read bank/payment notifications or SMS. It does not request contacts, call logs, accessibility, overlay or notification-reading access. Transaction entry is manual, with editable merchant-rule category suggestions.
 
-Gemini is optional. When you explicitly ask for coaching and approve sharing, your phone sends your question, category totals, budgets and goal names directly to Google Gemini over HTTPS. Merchant names, raw notification text and source identifiers are excluded. Questions and goal/category names can still contain personal information. Your Gemini API key goes only to Google's API in an HTTP header, never in a request URL or ledger backup. This app cannot control Google's processing or retention under your API account's terms.
+Optional voice input requests ordinary RECORD_AUDIO permission only when you explicitly choose Voice question. Android's configured speech service handles recognition and may use its online provider despite the offline preference. The transcript fills an editable question; it is not auto-submitted. Moneywise does not create audio files or continuously record. Recognition stops on cancel, timeout or leaving the foreground.
 
-Backups contain financial records as plaintext when explicitly copied to the clipboard. Other software may access the clipboard; save the backup securely and clear the clipboard. The Gemini key is excluded. Uninstalling or losing your phone may permanently remove local records, so keep your own backups.
+Optional output uses Android TextToSpeech and the device's installed voice engine, which may require downloaded voices or its online provider. It reads only the text you request, supports stop and stops on backgrounding. Playback can be heard nearby.
 
-Delete-all removes the ledger, settings, API key and legacy capture storage. External backups and information previously sent to Google are not removed by local deletion. Removing the key separately disconnects future Gemini calls without deleting your ledger.
+After confirmation, Gemini requests send the question and recorded financial aggregates, budgets and goal names directly to Google over HTTPS. Raw audio, merchants, source IDs and account identifiers are excluded. Questions/goal/category names can still contain personal details. Google processing and retention follow your API account's terms. The key is carried in a Google API header, never a URL, and is encrypted locally. The eye button reveals it only at your request. Loading models sends the key to Google's model-list endpoint but no financial summary.
 
-This describes the implementation for personal use. If you later publish or operate a service for others, add operator contact details and deployment-specific legal/store disclosures and review the authentication design.
+Backups exclude the API key. Clipboard exports are plaintext after explicit consent; save them securely and clear the clipboard. Restore replaces records after validation and confirmation. Uninstall/device loss may remove records permanently. Existing schema-1 backups remain supported.
+
+Delete-all removes ledger, settings, key and legacy capture storage. External backups and information already processed by Google or a speech provider are not deleted by local reset. Removing only the key preserves finances. Review the provider terms and consider the risks before sending personal information.
+
+This is a personal-use evaluation app. Public distribution requires appropriate operator/store disclosures and a review of credential handling. Tests/signatures do not guarantee device safety or Google Play Protect approval. Keep Play Protect enabled.

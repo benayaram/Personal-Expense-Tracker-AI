@@ -1,83 +1,46 @@
-> Current distribution: version 1.0.1 uses manual transaction entry. Notification capture, its service and access settings were removed after Play Protect blocked the original evaluation APK. The original notification design below describes historical scope, not a capability of this build. Keep Play Protect enabled; no Google approval or zero-risk guarantee is claimed.
+# Moneywise 1.1 — project report
 
-# Moneywise — project report and implementation brief
+## Purpose and design
+A private Android personal-finance companion for understanding spending, planning savings and obtaining practical advice. The requested UI reference guides a purple gradient balance header, white rounded cards, category-colored ring reports, savings progress cards, and a centered add action. All displayed financial figures derive from recorded data. Currency is INR; English is the initial interface language.
 
-## Product
-Moneywise is an Android personal-finance companion for a person who wants to understand spending, save for future goals, and receive practical coaching. The initial market assumption is India, INR, English, Android 7/API 24 or later. The visual identity uses emerald green, warm neutral surfaces, an M-shaped growth mark, large amounts and plain labels. The name is a working product name; trademark/store-name availability has not been checked.
+## Delivered feature mapping
 
-## User experience
-Four tabs keep the interface simple:
+| Requested capability | Implemented behavior |
+| --- | --- |
+| Smart expense tracking | Manual transaction CRUD with automatic merchant-rule category suggestions, category edits and custom categories. Saving immediately refreshes reports. No notification/SMS/bank capture. |
+| Goal-based savings | Custom goals for home, travel, education or other purposes; target, saved amount, deadline, progress and required monthly contribution. |
+| Income and budget management | Income/expense/transfer distinction, opening balance separated from income, monthly category limits, reserves, savings commitments and income-vs-expense reports. |
+| Actionable insights | In-app budget warnings, category proportions, recorded prior-month comparisons, transparent forecast/what-if/debt calculators and Gemini suggestions based on financial aggregates. |
+| Unified dashboard | Current tracked balance, estimated safe-to-spend, month selection, income/expense cards, recent entries and an insights shortcut. |
+| AI text and audio | Editable text questions or explicit speech-to-text; summary-sharing confirmation; Gemini answer text; optional read-aloud and stop controls. |
+| Key visibility and model choice | Encrypted personal key with show/hide, removal and replacement; model dropdown, authenticated Google model discovery, and custom model name. |
 
-1. **Home:** estimated safe-to-spend, income/expenses, tracked balance, category chart, recent activity and capture inbox.
-2. **Activity:** month navigation, search, income/expense/transfer filters, expandable monthly category reports and previous-month expenses. Entries can be created, edited and deleted. Categories are editable per entry, and users can create custom categories.
-3. **Plan:** monthly budgets, reserved bills, planned savings, savings goals with target dates, emergency-fund goals, recurring bill/subscription dates, a basic cash-flow scenario, savings what-if calculator and debt payoff calculator.
-4. **Coach:** deterministic local spending insights plus optional Gemini coaching called directly from the phone.
+## Navigation and workflow
+Home shows a unified overview. Report provides income/expense ring charts, month selection, category breakdown, prior-month comparison and searchable entries. My Plan puts visual savings goals first, followed by category budgets, opening balance, reserves, recurring bills and planning calculators. Coach provides local insights and optional direct Gemini questions. Settings are reached through the gear icon; the central add button creates a transaction or goal according to the current screen.
 
-Settings provide notification-access controls, Gemini API-key/model configuration, explicit backup export/restore and deletion. Start with an empty ledger; do not present fabricated transactions as the user's finances. Set an opening balance under Plan; it changes available funds without appearing as income. The tracked balance is not a live bank balance.
+Set opening balance under Plan; record actual income and expenses; mark transfers between owned accounts as transfers. Review budgets and create goals. Open Coach to type or dictate a question, review it, approve sharing a summary, and read/listen to the answer. No transaction capture, API request or recording starts automatically.
 
-## Calculations and boundaries
-Amounts are stored as integer paise; decimal text is parsed exactly. Transfers between owned accounts are excluded from both income and expenses. Reports use local calendar months. Safe-to-spend = opening balance + all-time recorded income − all-time recorded expenses − reserved upcoming bills − planned savings. A negative result is shown without clamping. Bill reserves and goal progress do not themselves move money or create expenses; users record actual payments separately.
+## Accounting and data model
+Amounts use integer paise. Decimal input and display avoid floating-point accounting. Safe-to-spend equals opening balance plus recorded income minus recorded expenses, reserved bills and planned savings. Transfers do not affect income/expense totals. Negative available funds remain visible. Reports filter by local calendar month; incomplete months and missing records must not be interpreted as complete bank data.
 
-Monthly goal contributions divide remaining target by remaining calendar months, rounded up; overdue goals use one month. The savings scenario assumes no investment return. The debt calculator models fixed monthly interest and payments, stops when the balance is repaid, and rejects payments that cannot cover interest. The forecast repeats current-month recorded income and expense totals and is explicitly an estimate; incomplete months can be misleading.
+Goals are manually recorded and informational; they do not move funds or double-count against the ledger. Monthly contributions divide remaining target by remaining calendar months, with overdue goals using one month. Bill due dates clamp to the last valid day in short months. Forecasts repeat recorded monthly income and spending and explicitly assume no change. Savings scenarios assume no returns; debt estimates assume fixed interest and payments.
 
-## Notification capture
-An optional native Android NotificationListenerService filters an explicit list of payment/bank application package names. It parses INR amounts and clear debit/credit language, rejects failed/reversed/OTP/request alerts, and stores candidates in an AES-GCM Android-Keystore-encrypted queue. It does not request SMS permissions, banking passwords, OTPs or permission to make payments.
-
-The user reviews a candidate, amount, transaction direction and suggested category before import. Source IDs prevent the same candidate from importing twice. Cross-application alerts may represent the same payment and require user review; perfect semantic duplicate matching is not claimed. Manual entries cover cash, unsupported formats and missing notifications. Captures are limited to 250 pending candidates and 2,000 recent event hashes; at capacity new candidates are ignored, so users must review the inbox regularly. Revoking notification access stops new capture. No historical bank sync is provided.
+Ledger schema version 1 stores transactions, categories, budgets, goals, recurring bills, opening balance and reserves. Existing 1.0.1 records/backups remain compatible. The ledger is limited to 10 million JSON characters so valid records fit the restore flow. Backup export is explicit plaintext clipboard sharing; restore validates then replaces records after confirmation. API keys are stored separately and excluded.
 
 ## Architecture
-- Flutter/Dart Material 3 UI and domain logic, separate encrypted persistence and coaching client.
-- Android Kotlin method channel for permissions and durable candidate queue.
-- Encrypted device ledger using flutter_secure_storage; Android backup disabled. Screenshots/recents capture blocked by FLAG_SECURE on Android.
-- No hosted server or backend. The Flutter HTTP client calls a fixed Google Gemini HTTPS endpoint directly. A personal Gemini key and model are configured in the app and stored encrypted on the phone; keys are excluded from ledger backups and source code.
-- AI requests send category totals, budgets, goal names and a question after confirmation. Merchant names, notification bodies and account identifiers are excluded. Goal names/questions can still contain personal information; users must avoid sensitive text.
-- Versioned JSON backups require explicit plaintext clipboard export consent and validated replace confirmation on restore.
+Flutter Material 3 UI and presentation widgets use a shared observable store. Pure Dart domain logic performs calculations and validation. Flutter secure storage is configured for encrypted Android persistence. The Android activity provides only legacy capture-storage cleanup and a foreground voice method channel; the notification listener has been removed.
 
-## AI behavior
-Local insights work without a network or key. Online coaching sends a request directly from the phone to Gemini only after user confirmation. It explains known figures, acknowledges incomplete data, and suggests up to three practical actions. It cannot move money. Notifications and transaction saves do not depend on AI responses or hosting uptime. Model failures, invalid keys, quota errors, safety refusals and timeouts produce useful errors while offline features remain available.
+Android SpeechRecognizer requests RECORD_AUDIO only on explicit voice input and uses the device's configured speech service. The app prefers offline recognition, but a service can use its online provider. Transcripts are editable and never auto-submitted. Android TextToSpeech reads requested text, queues bounded chunks and supports stop. Recognition and playback stop when the app leaves the foreground. Recognition sessions are guarded against stale callbacks. No audio file is created by Moneywise.
 
-The user enters their own key under Settings → Gemini API settings, can select an available Gemini model, and can replace/remove the key. The default model is configurable because availability differs by Google project and can change. Keys are not hard-coded, included in the repository, or exported with the ledger. Direct personal-key access is appropriate for the owner's private installation; public distribution with a shared paid key needs a different credential design. Model output remains advice to review, not guaranteed financial improvement.
+The phone calls a fixed Google Gemini HTTPS endpoint directly. Keys go in headers, never URLs. Requests include the question, as-of date, incomplete-data notice, category totals, budgets, goals, safe-to-spend and six months of aggregated history. Merchant names, raw audio and source/account identifiers are excluded. Missing history is labeled as unrecorded data. A model list request sends only the key and pagination parameters to Google. There is no hosted backend or hosting-sleep dependency.
 
-## Acceptance checks
-- Correct paise parsing, debit/credit/transfer totals, month filtering and negative balances.
-- Transaction CRUD survives restart; failed storage writes do not silently reset the ledger.
-- Stable-source deduplication, conservative notification parsing, permission revocation and candidate review.
-- Goals, budgets, reports, backup round trips and invalid-backup rejection.
-- Direct Google-only HTTPS routing, aggregate-only requests, API-key header placement, invalid-key/quota responses, empty answers and timeout handling.
-- Widget flows, Android compilation and physical-device checks at small/large text settings.
+## Failure behavior
+Invalid amounts and backups are rejected without replacing committed records. Storage errors do not silently reset the ledger; users can retry or explicitly restore/reset. Gemini quota/auth/model failures, empty responses and network timeouts preserve offline tracking and local insights. Model discovery failures leave preset/custom selection available. Missing speech services or microphone denial preserve typed input. A key can be removed without deleting finances.
 
-## Release scope and follow-up work
-The repository implements the functions described above; see VALIDATION.md for evidence of what actually ran. Features discussed as later possibilities include notification capture through an appropriately reviewed distribution route, receipt OCR, official bank aggregation, multi-currency conversion, multiuser cloud sync, on-device generative AI and scheduled system reminder notifications. Recurring bills currently provide in-app due-date reminders. Debt planning is a calculator rather than a synced loan account. Forecasting is a transparent scenario rather than a predictive model. These limitations must remain visible in the product and release description.
+## Privacy and device limitations
+No SMS, contacts, call-log, notification-reading, accessibility-service or overlay access is requested. Microphone access is optional and foreground-only. Device backup/transfer rules exclude app data; screenshots are blocked on Android. Device compromise remains outside these guarantees. Users approve Google data sharing and must review the API plan's processing, retention and cost terms. Goal names, category names and questions may themselves contain personal details.
 
-## Release gates
-Do not label this release production-ready until analysis/tests/build pass, a signed release is installed and exercised on real supported Android devices, notification formats are checked against consented real examples, backup/recovery is tested, and release signing and a real-key Gemini check are completed. Store declarations are an additional gate only if publishing later. No test suite can establish that software has zero hidden bugs.
+## Validation and release gates
+See VALIDATION.md for executed checks, exact counts and APK integrity. Automated voice tests use a mocked platform channel; transport tests use a mocked HTTP client. Widget renders show fictional data. These do not establish actual speech recognition, audio playback, model availability or Play Protect approval on the owner's phone. Real-device checks, a live key/model request and production signing remain required before a production-readiness claim. Keep Play Protect enabled.
 
-## Data flow
-
-```mermaid
-flowchart LR
-  Alerts[Supported payment notifications] --> Filter[On-device parser]
-  Filter --> Queue[Encrypted review queue]
-  Manual[Manual entry] --> Ledger[Encrypted local ledger]
-  Queue --> Review[User review]
-  Review --> Ledger
-  Ledger --> Reports[Reports and deterministic planning]
-  Ledger --> Consent[Explicit consent to share aggregates]
-  Consent --> Gemini[Google Gemini API over HTTPS]
-```
-
-## Stored records
-
-| Record | Key fields | Accounting effect |
-| --- | --- | --- |
-| Transaction | ID, source ID, merchant, category, integer paise, local date, kind | Income adds; expense subtracts; transfer excluded |
-| Budget | Category and monthly integer-paise limit | Comparison only |
-| Savings goal | Name, target, manually recorded savings, deadline | Informational; no double counting |
-| Recurring bill | ID, name, integer paise, monthly due day | In-app due-date reminder; no automatic expense |
-| Commitments | Reserved bills and planned savings | Deducted from safe-to-spend estimate |
-| Coaching settings | Personal Gemini API key and model name | Encrypted on phone; key excluded from exported ledger backups |
-
-## Delivery artifacts
-The Flutter and native Android source, lockfile, launcher icon, brand SVG, this brief, privacy/release guidance, automated checks and direct Gemini integration are versioned together. CI produces an evaluation APK only after checks pass. Production signing credentials stay outside Git. The owner enters the Gemini key on the phone. Production signing, physical-device acceptance and a real Gemini request remain release gates, not implied by a source push.
-
-The version-one local ledger is limited to 10 million JSON characters so every valid ledger can be restored through the backup flow. Long-term high-volume use should migrate to a transactional database with a tested migration path before raising this limit.
+Later features may include reviewed automatic transaction sources, receipt OCR, multi-currency accounting, a transactional database for high-volume use, and scheduled OS reminders. Recurring bills currently provide in-app reminders. Direct personal-key use targets the owner's private installation; shared public paid access requires a new credential design.

@@ -1,15 +1,14 @@
-# Gemini on your phone — no hosting required
+# Gemini, model selection and voice
 
-1. Create your own Gemini API key through Google AI Studio and enable the relevant API/project access. Check model availability, quota and any billing requirements for your account/region.
-2. Install Moneywise and open **Settings → Gemini API settings**.
-3. Enter the key on the phone. Choose a Gemini model available to your project; the default is `gemini-2.5-flash`, which can be changed if unavailable.
-4. Open Coach, write a question, and approve sharing the displayed financial summary. The phone sends that request directly over HTTPS to `generativelanguage.googleapis.com`.
-5. Use Settings to replace or remove the key. A blank key field keeps the current key when editing the model; **Remove key** disconnects online coaching.
+1. Open Moneywise → Settings (gear) → Gemini API settings.
+2. Enter your own key from Google AI Studio. The eye button shows/hides it; existing saved keys start hidden. Keys stay encrypted on this phone and are excluded from ledger backups.
+3. Choose a preset or press **Load models from Google**. The latter fetches models supported by the key. Preset names are suggestions, not availability guarantees. Custom model names are also supported.
+4. Save, open Coach, and type a question. The request includes recorded category/month totals, budgets, goals and history after your confirmation, directly to Google. No hosting is needed.
+5. For voice, tap **Voice question**, read the speech-service disclosure, and choose whether to grant microphone permission. Review/edit the transcription, then separately press **Share summary and ask**. Dictation alone never submits financial data to Gemini.
+6. Press **Read answer aloud** or **Listen to insights** for Android speech output. **Stop audio** stops playback. Local insights can be read without a Gemini key. Voice also stops when the app leaves the foreground.
 
-Notification capture and ledger updates never depend on AI calls, Render, or any other hosted server. If Gemini is unavailable, the app keeps tracking locally and shows local insights. API calls need internet and can encounter Google quotas, paid usage limits or model errors. A 25-second timeout prevents indefinite waiting.
+Speech input/output depend on installed/enabled Android speech services and voice/language availability. Offline recognition is preferred but not guaranteed; the configured speech provider may process audio online. Moneywise does not save audio files or send raw audio to Gemini. Microphone denial or a missing service leaves typed questions available. Audio playback can be heard by people nearby.
 
-The key is stored using encrypted device storage, not in Dart source, APK build flags or exported backups. Keep it out of GitHub and chat. Phone compromise can still expose local secrets; use a device lock and Google API restrictions/quotas where applicable. This design is for your own personal installation and key. Reconsider key distribution if you later publish the app for other users; never ship a shared paid key to everyone.
+A key can be shown, replaced or removed in Settings. Removing it disconnects Gemini without deleting finances. Model discovery and advice require internet; API access, quota and charges depend on your Google project. Use suitable Google restrictions and usage limits. Avoid secrets/account numbers in questions and goal/category names.
 
-Only the question, category totals, budgets, goal names and calculated goal contributions are sent after confirmation. Merchant names, raw notifications and source/account identifiers are excluded. Avoid sensitive personal details in goal names or questions. Google processes submitted data under the terms applicable to your API plan; review those terms before sending financial information.
-
-A real-key smoke test on your phone is still required. Automated transport tests use a dummy key and do not establish that your Google account has API access.
+Automated tests use dummy keys and simulated speech/HTTP transports. Check a real request and speech input/output on your own phone before relying on them. Keep keys out of GitHub and chat; do not embed a shared paid key in a publicly distributed APK.

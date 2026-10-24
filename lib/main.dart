@@ -1,12 +1,11 @@
-import 'dart:math' as math;
-
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'coach.dart';
 import 'domain.dart';
 import 'store.dart';
+import 'presentation.dart';
+import 'voice.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,14 +21,19 @@ class MoneywiseApp extends StatelessWidget {
     debugShowCheckedModeBanner: false,
     theme: ThemeData(
       useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff087f5b)),
-      scaffoldBackgroundColor: const Color(0xfff6f8f6),
+      colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff9562f5)),
+      scaffoldBackgroundColor: const Color(0xfff9f8fc),
       inputDecorationTheme: const InputDecorationTheme(
         border: OutlineInputBorder(),
       ),
       cardTheme: const CardThemeData(
         elevation: 0,
-        margin: EdgeInsets.only(bottom: 12),
+        margin: EdgeInsets.only(bottom: 16),
+        color: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(24)),
+          side: BorderSide(color: Color(0xffefedf4)),
+        ),
       ),
     ),
     home: HomeShell(store: store),
@@ -48,7 +52,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   String search = '';
   EntryKind? filter;
   DateTime selectedMonth = DateTime(DateTime.now().year, DateTime.now().month);
-  bool coachBusy = false;
+  bool coachBusy = false, listening = false;
+  EntryKind reportKind = EntryKind.expense;
   String? coachAnswer;
   int coachEpoch = 0;
   final question = TextEditingController();
@@ -64,6 +69,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    Voice.cancel().catchError((_) {});
+    Voice.stop().catchError((_) {});
     question.dispose();
     super.dispose();
   }
@@ -71,6 +78,10 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) refreshCapture();
+    if (state == AppLifecycleState.paused) {
+      Voice.cancel().catchError((_) {});
+      Voice.stop().catchError((_) {});
+    }
   }
 
   void message(String text) {
@@ -135,9 +146,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       }
       return Scaffold(
         appBar: AppBar(
-          title: Text(
-            ['Moneywise', 'Activity', 'Your plan', 'Money coach'][tab],
-          ),
+          title: Text(['Moneywise', 'Report', 'My Plan', 'AI Coach'][tab]),
           actions: [
             IconButton(
               tooltip: 'Settings and privacy',
@@ -160,11 +169,17 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
             ),
           ),
         ),
-        floatingActionButton: tab < 2
-            ? FloatingActionButton.extended(
-                onPressed: store.busy ? null : () => editEntry(),
-                icon: const Icon(Icons.add),
-                label: const Text('Add entry'),
+        floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+        floatingActionButton: tab < 3
+            ? FloatingActionButton(
+                tooltip: tab == 2 ? 'Create goal' : 'Add entry',
+                backgroundColor: violet,
+                foregroundColor: Colors.white,
+                shape: const CircleBorder(),
+                onPressed: store.busy
+                    ? null
+                    : () => tab == 2 ? goalDialog() : editEntry(),
+                child: const Icon(Icons.add),
               )
             : null,
         bottomNavigationBar: NavigationBar(
@@ -177,7 +192,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
             ),
             NavigationDestination(
               icon: Icon(Icons.receipt_long_outlined),
-              label: 'Activity',
+              label: 'Report',
             ),
             NavigationDestination(
               icon: Icon(Icons.savings_outlined),
@@ -221,94 +236,349 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     padding: const EdgeInsets.symmetric(vertical: 16),
     child: Text(text),
   );
-  Widget dashboard() => ListView(
-    padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-    children: [
-      Card(
-        color: Theme.of(context).colorScheme.primaryContainer,
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Safe to spend · estimate'),
-              const SizedBox(height: 8),
-              Text(
-                money(ledger.safeToSpend),
-                style: Theme.of(context).textTheme.headlineLarge,
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Tracked balance minus reserved bills and planned savings. Add an opening balance and keep entries current.',
-              ),
-              TextButton(
-                onPressed: reserveDialog,
-                child: const Text('Adjust your plan'),
-              ),
-            ],
-          ),
-        ),
-      ),
-      panel('This month', [
-        amountRow('Income', ledger.total(EntryKind.income, DateTime.now())),
-        amountRow('Expenses', ledger.total(EntryKind.expense, DateTime.now())),
-        amountRow('Tracked balance · all time', ledger.balance),
-      ]),
-      panel('Spending by category', spendingChart(DateTime.now())),
-      panel(
-        'Recent activity',
-        ledger.entries.isEmpty
-            ? [
-                empty(
-                  'Start with your opening balance or your first transaction.',
-                ),
-              ]
-            : ((ledger.entries.toList()
-                    ..sort((a, b) => b.date.compareTo(a.date)))
-                  .take(4)
-                  .map(entryTile)
-                  .toList()),
-      ),
-    ],
-  );
-  List<Widget> spendingChart(DateTime month) {
-    final items = ledger.spending(month).entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    final total = items.fold(0, (int s, e) => s + e.value);
-    if (total == 0) {
-      return [empty('Your spending chart appears after your first expense.')];
+  Future<void> chooseMonth() async {
+    final chosen = await showDatePicker(
+      context: context,
+      helpText: 'Choose report month',
+      initialDate: selectedMonth,
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now(),
+    );
+    if (chosen != null) {
+      setState(() => selectedMonth = DateTime(chosen.year, chosen.month));
     }
-    return [
-      Semantics(
-        label: 'Category spending chart. Total ${money(total)}',
-        child: SizedBox(
-          height: 140,
-          width: double.infinity,
-          child: CustomPaint(
-            painter: SpendingPainter(items.map((e) => e.value).toList()),
+  }
+
+  Widget dashboard() => ListView(
+    padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
+    children: [
+      Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(32),
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xffa978ff), Color(0xff8553dc), Color(0xffbb9bf6)],
           ),
         ),
-      ),
-      const SizedBox(height: 12),
-      ...items.asMap().entries.map(
-        (e) => Row(
+        child: Column(
           children: [
-            Container(
-              width: 10,
-              height: 10,
-              color: chartColors[e.key % chartColors.length],
+            Row(
+              children: [
+                const CircleAvatar(
+                  backgroundColor: Colors.white24,
+                  child: Icon(Icons.person_outline, color: Colors.white),
+                ),
+                Expanded(
+                  child: TextButton(
+                    onPressed: chooseMonth,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            monthLabel(selectedMonth),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                        ),
+                        const Icon(
+                          Icons.expand_more,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Spending alerts',
+                  onPressed: () => showModalBottomSheet<void>(
+                    context: context,
+                    builder: (ctx) => SafeArea(
+                      child: ListView(
+                        shrinkWrap: true,
+                        padding: const EdgeInsets.all(24),
+                        children: [
+                          const Text(
+                            'Current month spending alerts',
+                            style: TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          ...ledger
+                              .insights(DateTime.now())
+                              .map(
+                                (s) => ListTile(
+                                  leading: const Icon(
+                                    Icons.notifications_outlined,
+                                    color: violet,
+                                  ),
+                                  title: Text(s),
+                                ),
+                              ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  icon: const Icon(
+                    Icons.notifications_none,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            Expanded(child: amountRow(e.value.key, e.value.value)),
+            const SizedBox(height: 25),
+            const Text(
+              'Current balance',
+              style: TextStyle(color: Colors.white),
+            ),
+            const SizedBox(height: 8),
+            FittedBox(
+              child: Text(
+                money(ledger.balance),
+                style: const TextStyle(
+                  fontSize: 40,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: .18),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                'Safe to spend · estimate  ${money(ledger.safeToSpend)}',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
           ],
         ),
       ),
+      const SizedBox(height: 22),
+      Row(
+        children: [
+          const Expanded(
+            child: Text(
+              'Your Money',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+            ),
+          ),
+          TextButton.icon(
+            onPressed: () => setState(() => tab = 1),
+            icon: const Icon(Icons.chevron_right),
+            iconAlignment: IconAlignment.end,
+            label: const Text('Details'),
+          ),
+        ],
+      ),
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: SummaryTile(
+              label: 'Income',
+              amount: ledger.total(EntryKind.income, selectedMonth),
+              icon: Icons.savings_outlined,
+              color: const Color(0xff25a7eb),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: SummaryTile(
+              label: 'Expenses',
+              amount: ledger.total(EntryKind.expense, selectedMonth),
+              icon: Icons.account_balance_wallet_outlined,
+              color: const Color(0xffff6e55),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 18),
+      Material(
+        color: ink,
+        borderRadius: BorderRadius.circular(24),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(24),
+          onTap: () => setState(() => tab = 3),
+          child: const Padding(
+            padding: EdgeInsets.all(17),
+            child: Row(
+              children: [
+                Icon(Icons.auto_awesome, color: Color(0xffc4a6ff)),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Your financial insights',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                Icon(Icons.arrow_forward, color: Colors.white, size: 18),
+              ],
+            ),
+          ),
+        ),
+      ),
+      const SizedBox(height: 22),
+      Row(
+        children: [
+          const Expanded(
+            child: Text(
+              'Transactions',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+            ),
+          ),
+          TextButton(
+            onPressed: () => setState(() => tab = 1),
+            child: const Text('View all'),
+          ),
+        ],
+      ),
+      Text(
+        monthLabel(selectedMonth),
+        style: Theme.of(context).textTheme.bodySmall,
+      ),
+      const SizedBox(height: 12),
+      if (ledger.month(selectedMonth).isEmpty)
+        panel('Start your money story', [
+          const Text(
+            'Set an opening balance under Plan, then add income or an expense. Categories are suggested automatically and can be edited.',
+          ),
+        ])
+      else
+        ...ledger
+            .month(selectedMonth)
+            .take(5)
+            .map(
+              (e) => Card(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 5,
+                  ),
+                  child: entryTile(e),
+                ),
+              ),
+            ),
+    ],
+  );
+  List<Widget> spendingChart(
+    DateTime month, {
+    EntryKind kind = EntryKind.expense,
+  }) {
+    final values = <String, int>{};
+    for (final e in ledger.month(month).where((e) => e.kind == kind)) {
+      values.update(e.category, (v) => v + e.paise, ifAbsent: () => e.paise);
+    }
+    final items = values.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final ordered = Map<String, int>.fromEntries(items);
+    final total = values.values.fold(0, (int s, v) => s + v);
+    final previous = <String, int>{};
+    for (final e
+        in ledger
+            .month(DateTime(month.year, month.month - 1))
+            .where((e) => e.kind == kind)) {
+      previous.update(e.category, (v) => v + e.paise, ifAbsent: () => e.paise);
+    }
+    return [
+      MoneyRing(
+        values: ordered,
+        label: kind == EntryKind.expense ? 'Total expenses' : 'Total income',
+      ),
+      if (total == 0) empty('No ${kind.name} records for this month.'),
+      ...items.asMap().entries.map((item) {
+        final e = item.value;
+        final color = palette[item.key % palette.length];
+        final old = previous[e.key] ?? 0;
+        return Container(
+          margin: const EdgeInsets.only(top: 12),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            border: Border.all(color: const Color(0xffeeeaf2)),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    backgroundColor: color.withValues(alpha: .1),
+                    child: Icon(categoryIcon(e.key), color: color),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          e.key,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        Text(
+                          '${(e.value / total * 100).toStringAsFixed(1)}% of total',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          money(e.value),
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        if (old > 0)
+                          Text(
+                            '${e.value >= old ? '+' : ''}${((e.value - old) / old * 100).toStringAsFixed(0)}% vs prior month',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: e.value > old
+                                  ? Colors.deepOrange
+                                  : Colors.teal,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              LinearProgressIndicator(
+                value: e.value / total,
+                minHeight: 6,
+                borderRadius: BorderRadius.circular(8),
+                color: color,
+                backgroundColor: color.withValues(alpha: .08),
+              ),
+            ],
+          ),
+        );
+      }),
     ];
   }
 
   Widget entryTile(MoneyEntry e) => ListTile(
     contentPadding: EdgeInsets.zero,
     leading: CircleAvatar(
+      backgroundColor: violet.withValues(alpha: .09),
       child: Icon(switch (e.kind) {
         EntryKind.income => Icons.south_west,
         EntryKind.expense => Icons.north_east,
@@ -333,14 +603,14 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         .month(selectedMonth)
         .where(
           (e) =>
-              (filter == null || filter == e.kind) &&
+              (filter == null || e.kind == filter) &&
               '${e.merchant} ${e.category}'.toLowerCase().contains(
                 search.toLowerCase(),
               ),
         )
         .toList();
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
       children: [
         Row(
           children: [
@@ -356,8 +626,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
             ),
             Expanded(
               child: Center(
-                child: Text(
-                  '${selectedMonth.year} / ${selectedMonth.month.toString().padLeft(2, '0')}',
+                child: TextButton(
+                  onPressed: chooseMonth,
+                  child: Text(monthLabel(selectedMonth)),
                 ),
               ),
             ),
@@ -373,6 +644,37 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
             ),
           ],
         ),
+        SegmentedButton<EntryKind>(
+          segments: const [
+            ButtonSegment(value: EntryKind.expense, label: Text('Expenses')),
+            ButtonSegment(value: EntryKind.income, label: Text('Income')),
+          ],
+          selected: {reportKind},
+          onSelectionChanged: (v) => setState(() => reportKind = v.first),
+        ),
+        const SizedBox(height: 20),
+        panel(
+          reportKind == EntryKind.expense ? 'Expenses report' : 'Income report',
+          spendingChart(selectedMonth, kind: reportKind),
+        ),
+        panel('Income vs expenses', [
+          amountRow('Income', ledger.total(EntryKind.income, selectedMonth)),
+          amountRow('Expenses', ledger.total(EntryKind.expense, selectedMonth)),
+          amountRow(
+            'Net income',
+            ledger.total(EntryKind.income, selectedMonth) -
+                ledger.total(EntryKind.expense, selectedMonth),
+          ),
+          const Text(
+            'Recorded transactions only. Current and prior months may contain incomplete data.',
+            style: TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+        ]),
+        const Text(
+          'All transactions',
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 12),
         TextField(
           decoration: const InputDecoration(
             labelText: 'Search entries',
@@ -380,9 +682,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           ),
           onChanged: (v) => setState(() => search = v),
         ),
-        const SizedBox(height: 12),
         Wrap(
-          spacing: 8,
+          spacing: 6,
           children: [
             ChoiceChip(
               label: const Text('All'),
@@ -398,36 +699,17 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
             ),
           ],
         ),
-        const SizedBox(height: 12),
-        Card(
-          child: ExpansionTile(
-            title: const Text('Monthly report'),
-            children: [
-              panel('Spending overview', [
-                amountRow(
-                  'Income',
-                  ledger.total(EntryKind.income, selectedMonth),
-                ),
-                amountRow(
-                  'Previous month expenses',
-                  ledger.total(
-                    EntryKind.expense,
-                    DateTime(selectedMonth.year, selectedMonth.month - 1),
-                  ),
-                ),
-                amountRow(
-                  'Expenses',
-                  ledger.total(EntryKind.expense, selectedMonth),
-                ),
-                ...spendingChart(selectedMonth),
-              ]),
-            ],
-          ),
-        ),
         if (entries.isEmpty)
           empty('No matching entries in this month.')
         else
-          ...entries.map(entryTile),
+          ...entries.map(
+            (e) => Card(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: entryTile(e),
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -435,35 +717,146 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   Widget plan() => ListView(
     padding: const EdgeInsets.all(16),
     children: [
-      panel('Opening balance', [
-        amountRow('Before your first recorded entry', ledger.openingBalance),
+      panel('Savings goals', [
         const Text(
-          'Money you already had before tracking began. This changes the tracked balance without counting as income.',
+          'Goal progress is tracked separately from your spendable funds.',
         ),
-        TextButton(
-          onPressed: () async {
-            final values = await amountDialog(
-              'Opening balance',
-              ['Starting balance'],
-              [ledger.openingBalance],
-              allowZero: true,
-            );
-            if (values != null) {
-              await perform(
-                () => store.change((l) => l.openingBalance = values[0]),
-              );
-            }
-          },
-          child: const Text('Set opening balance'),
+        if (ledger.goals.isEmpty)
+          empty('Start with an emergency fund or a future purchase.'),
+        ...ledger.goals.asMap().entries.map((e) {
+          final goal = e.value;
+          final ratio = (goal.saved / goal.target).clamp(0.0, 1.0);
+          final remaining = (goal.target - goal.saved).clamp(0, goal.target);
+          final color = palette[e.key % palette.length];
+          return Container(
+            margin: const EdgeInsets.only(top: 16, bottom: 8),
+            decoration: BoxDecoration(
+              border: Border.all(color: const Color(0xffeeeaf2)),
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          CircleAvatar(
+                            backgroundColor: color.withValues(alpha: .1),
+                            child: Icon(categoryIcon(goal.name), color: color),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              goal.name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 17,
+                              ),
+                            ),
+                          ),
+                          PopupMenuButton<String>(
+                            tooltip: 'Goal actions',
+                            onSelected: (v) async {
+                              if (v == 'edit') {
+                                await goalDialog(index: e.key);
+                              } else if (await confirm(
+                                'Delete goal?',
+                                'Transactions will stay unchanged.',
+                              )) {
+                                await perform(
+                                  () => store.change(
+                                    (l) => l.goals.removeAt(e.key),
+                                  ),
+                                );
+                              }
+                            },
+                            itemBuilder: (_) => const [
+                              PopupMenuItem(
+                                value: 'edit',
+                                child: Text('Edit goal'),
+                              ),
+                              PopupMenuItem(
+                                value: 'delete',
+                                child: Text('Delete goal'),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 22),
+                      Text(
+                        money(goal.saved),
+                        style: const TextStyle(
+                          fontSize: 25,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      Text(
+                        'of ${money(goal.target)} · ${(ratio * 100).round()}% saved',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      const SizedBox(height: 18),
+                      LinearProgressIndicator(
+                        value: ratio,
+                        minHeight: 9,
+                        borderRadius: BorderRadius.circular(12),
+                        color: color,
+                        backgroundColor: color.withValues(alpha: .09),
+                      ),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 4,
+                        children: [
+                          Text(
+                            'Due ${dateLabel(goal.deadline)}',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          Text(
+                            '${money(remaining)} left',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: .09),
+                    borderRadius: const BorderRadius.vertical(
+                      bottom: Radius.circular(24),
+                    ),
+                  ),
+                  child: Text(
+                    remaining == 0
+                        ? 'Goal reached — keep building good habits.'
+                        : '${money(goal.monthlyRequired(DateTime.now()))}/month needed to reach your target.',
+                    style: TextStyle(
+                      color: color,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }),
+        TextButton.icon(
+          onPressed: goalDialog,
+          icon: const Icon(Icons.add),
+          label: const Text('Create goal'),
         ),
-      ]),
-      panel('Monthly commitments', [
-        amountRow('Reserved for upcoming bills', ledger.reservedBills),
-        amountRow('Planned savings', ledger.plannedSavings),
-        const Text(
-          'These reserves reduce safe-to-spend. They do not move money or record expenses.',
-        ),
-        TextButton(onPressed: reserveDialog, child: const Text('Set amounts')),
       ]),
       panel('Category budgets', [
         if (ledger.budgets.isEmpty)
@@ -497,61 +890,35 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           label: const Text('Add budget'),
         ),
       ]),
-      panel('Savings goals', [
+      panel('Opening balance', [
+        amountRow('Before your first recorded entry', ledger.openingBalance),
         const Text(
-          'Progress is recorded manually. Goal balances are informational and do not change your tracked balance.',
+          'Money you already had before tracking began. This changes the tracked balance without counting as income.',
         ),
-        if (ledger.goals.isEmpty)
-          empty('Start with an emergency fund or a future purchase.'),
-        ...ledger.goals.asMap().entries.map(
-          (e) => ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text(e.value.name),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                LinearProgressIndicator(
-                  value: (e.value.saved / e.value.target).clamp(0.0, 1.0),
-                ),
-                Text(
-                  '${money(e.value.saved)} of ${money(e.value.target)} · due ${dateLabel(e.value.deadline)}',
-                ),
-                Text(
-                  '${money(e.value.monthlyRequired(DateTime.now()))}/month needed',
-                ),
-              ],
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  tooltip: 'Edit goal',
-                  onPressed: () => goalDialog(index: e.key),
-                  icon: const Icon(Icons.edit_outlined),
-                ),
-                IconButton(
-                  tooltip: 'Delete goal',
-                  onPressed: () async {
-                    if (await confirm(
-                      'Delete goal?',
-                      'Transactions will stay unchanged.',
-                    )) {
-                      await perform(
-                        () => store.change((l) => l.goals.removeAt(e.key)),
-                      );
-                    }
-                  },
-                  icon: const Icon(Icons.delete_outline),
-                ),
-              ],
-            ),
-          ),
+        TextButton(
+          onPressed: () async {
+            final values = await amountDialog(
+              'Opening balance',
+              ['Starting balance'],
+              [ledger.openingBalance],
+              allowZero: true,
+            );
+            if (values != null) {
+              await perform(
+                () => store.change((l) => l.openingBalance = values[0]),
+              );
+            }
+          },
+          child: const Text('Set opening balance'),
         ),
-        TextButton.icon(
-          onPressed: goalDialog,
-          icon: const Icon(Icons.add),
-          label: const Text('Create goal'),
+      ]),
+      panel('Monthly commitments', [
+        amountRow('Reserved for upcoming bills', ledger.reservedBills),
+        amountRow('Planned savings', ledger.plannedSavings),
+        const Text(
+          'These reserves reduce safe-to-spend. They do not move money or record expenses.',
         ),
+        TextButton(onPressed: reserveDialog, child: const Text('Set amounts')),
       ]),
       panel('What if?', [
         const Text(
@@ -628,6 +995,22 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     padding: const EdgeInsets.all(16),
     children: [
       panel('Your weekly check-in', [
+        Wrap(
+          spacing: 8,
+          children: [
+            TextButton.icon(
+              onPressed: () =>
+                  readAnswer(ledger.insights(DateTime.now()).join(' ')),
+              icon: const Icon(Icons.volume_up_outlined),
+              label: const Text('Listen to insights'),
+            ),
+            TextButton.icon(
+              onPressed: () => perform(Voice.stop),
+              icon: const Icon(Icons.stop),
+              label: const Text('Stop audio'),
+            ),
+          ],
+        ),
         const Text('Local insights · calculated on your device'),
         const SizedBox(height: 12),
         ...ledger
@@ -662,12 +1045,43 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
               labelText: 'How can I save more this month?',
             ),
           ),
+          Wrap(
+            spacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: coachBusy
+                    ? null
+                    : (listening ? cancelVoice : listenQuestion),
+                icon: Icon(
+                  listening ? Icons.stop_circle_outlined : Icons.mic_none,
+                ),
+                label: Text(listening ? 'Stop listening' : 'Voice question'),
+              ),
+              if (listening)
+                const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: Text('Listening…'),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
           FilledButton.icon(
             onPressed: coachBusy ? null : askCoach,
             icon: const Icon(Icons.auto_awesome),
             label: Text(coachBusy ? 'Thinking…' : 'Share summary and ask'),
           ),
           if (coachBusy) const LinearProgressIndicator(),
+          if (coachAnswer != null)
+            Wrap(
+              spacing: 8,
+              children: [
+                TextButton.icon(
+                  onPressed: () => readAnswer(coachAnswer!),
+                  icon: const Icon(Icons.volume_up_outlined),
+                  label: const Text('Read answer aloud'),
+                ),
+              ],
+            ),
           if (coachAnswer != null)
             Padding(
               padding: const EdgeInsets.only(top: 16),
@@ -1244,59 +1658,196 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> listenQuestion() async {
+    if (!await confirm(
+      'Voice input',
+      'Your device speech service will transcribe your question and may process audio online. Microphone access is requested only for this action. Review the text before sending anything to Gemini.',
+    )) {
+      return;
+    }
+    if (!mounted) return;
+    setState(() => listening = true);
+    try {
+      final text = await Voice.listen();
+      if (mounted && text.isNotEmpty) {
+        question.text = text.length > 500 ? text.substring(0, 500) : text;
+        if (text.length > 500) {
+          message(
+            'Voice text was limited to 500 characters. Please review it.',
+          );
+        }
+      }
+    } on PlatformException catch (e) {
+      if (e.code != 'CANCELLED') {
+        message(
+          e.message ??
+              'Voice input is unavailable. Type your question instead.',
+        );
+      }
+    } catch (_) {
+      message('Voice input is unavailable on this device. You can still type.');
+    } finally {
+      if (mounted) setState(() => listening = false);
+    }
+  }
+
+  Future<void> cancelVoice() async {
+    await perform(Voice.cancel);
+    if (mounted) setState(() => listening = false);
+  }
+
+  Future<void> readAnswer(String text) async {
+    try {
+      await Voice.speak(text);
+    } on PlatformException catch (e) {
+      if (e.code != 'CANCELLED') {
+        message(e.message ?? 'Speech output is unavailable.');
+      }
+    } catch (_) {
+      message(
+        'Speech output is unavailable on this device. The text is still available.',
+      );
+    }
+  }
+
   Future<void> coachSettings() async {
-    final apiKeyController = TextEditingController();
+    final apiKeyController = TextEditingController(text: store.geminiKey);
     final model = TextEditingController(text: store.geminiModel);
     final form = GlobalKey<FormState>();
-    var saving = false;
+    var saving = false, visible = false, loading = false, custom = false;
+    String? loadError;
+    var models = <String>{
+      store.geminiModel,
+      'gemini-2.5-flash',
+      'gemini-2.5-flash-lite',
+      'gemini-2.5-pro',
+    }.toList();
     await showDialog<void>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, update) => AlertDialog(
-          title: const Text('Connect Gemini'),
+          title: const Text('Gemini settings'),
           content: SingleChildScrollView(
             child: Form(
               key: form,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Use your own Gemini API key for this personal app. It is encrypted on this phone and excluded from backups. Requests go directly to Google when you ask for advice. API usage may have quotas or charges.',
+                    'Your key stays encrypted on this phone and is excluded from financial backups. Gemini usage may have quotas or charges.',
                   ),
                   const SizedBox(height: 16),
                   TextFormField(
                     controller: apiKeyController,
-                    obscureText: true,
+                    obscureText: !visible,
                     enableSuggestions: false,
                     autocorrect: false,
                     maxLength: 512,
                     decoration: InputDecoration(
-                      labelText: store.geminiKey.isEmpty
-                          ? 'Gemini API key'
-                          : 'New key (blank keeps current)',
+                      labelText: 'Gemini API key',
+                      suffixIcon: IconButton(
+                        tooltip: visible ? 'Hide API key' : 'Show API key',
+                        onPressed: () => update(() => visible = !visible),
+                        icon: Icon(
+                          visible
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined,
+                        ),
+                      ),
                     ),
-                    validator: (v) =>
-                        store.geminiKey.isEmpty && (v?.trim().isEmpty ?? true)
+                    validator: (v) => (v?.trim().isEmpty ?? true)
                         ? 'Enter your API key.'
                         : null,
                   ),
                   const SizedBox(height: 12),
-                  TextFormField(
-                    controller: model,
-                    maxLength: 100,
-                    decoration: const InputDecoration(
-                      labelText: 'Gemini model',
+                  DropdownButtonFormField<String>(
+                    key: ValueKey(
+                      '${models.join(',')}|${custom ? 'custom' : model.text}',
                     ),
-                    validator: (v) =>
-                        RegExp(
-                          r'^gemini-[A-Za-z0-9._-]+$',
-                        ).hasMatch(v?.trim() ?? '')
-                        ? null
-                        : 'Enter a Gemini model name.',
+                    initialValue: custom ? 'custom' : model.text,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Select Gemini model',
+                    ),
+                    items: [
+                      ...models.map(
+                        (m) => DropdownMenuItem(
+                          value: m,
+                          child: Text(m, overflow: TextOverflow.ellipsis),
+                        ),
+                      ),
+                      const DropdownMenuItem(
+                        value: 'custom',
+                        child: Text('Custom model…'),
+                      ),
+                    ],
+                    onChanged: (v) => update(() {
+                      custom = v == 'custom';
+                      if (!custom) model.text = v!;
+                    }),
                   ),
-                  const SizedBox(height: 8),
+                  if (custom)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: TextFormField(
+                        controller: model,
+                        maxLength: 100,
+                        decoration: const InputDecoration(
+                          labelText: 'Custom Gemini model',
+                        ),
+                        validator: (v) =>
+                            RegExp(
+                              r'^gemini-[A-Za-z0-9._-]+$',
+                            ).hasMatch(v?.trim() ?? '')
+                            ? null
+                            : 'Enter a Gemini model name.',
+                      ),
+                    ),
+                  TextButton.icon(
+                    onPressed: loading || saving
+                        ? null
+                        : () async {
+                            update(() {
+                              loading = true;
+                              loadError = null;
+                            });
+                            try {
+                              final available = await listGeminiModels(
+                                apiKeyController.text.trim(),
+                              );
+                              if (ctx.mounted) {
+                                update(() {
+                                  models = <String>{
+                                    model.text,
+                                    ...available,
+                                  }.toList();
+                                });
+                              }
+                            } catch (_) {
+                              if (ctx.mounted) {
+                                update(
+                                  () => loadError =
+                                      'Could not load models. Check the key, internet and API access. You can still select or enter a model.',
+                                );
+                              }
+                            } finally {
+                              if (ctx.mounted) update(() => loading = false);
+                            }
+                          },
+                    icon: const Icon(Icons.refresh),
+                    label: Text(
+                      loading ? 'Loading models…' : 'Load models from Google',
+                    ),
+                  ),
+                  if (loadError != null)
+                    Text(
+                      loadError!,
+                      style: TextStyle(color: Theme.of(ctx).colorScheme.error),
+                    ),
                   const Text(
-                    'Use a model available to your Google project. Notification capture and local insights do not depend on Gemini.',
+                    'Preset names are suggestions, not proof of availability. Load the models supported by your key or enter a custom model.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
                   ),
                 ],
               ),
@@ -1305,7 +1856,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           actions: [
             if (store.geminiKey.isNotEmpty)
               TextButton(
-                onPressed: saving
+                onPressed: saving || loading
                     ? null
                     : () async {
                         update(() => saving = true);
@@ -1317,10 +1868,11 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                               coachAnswer = null;
                             });
                           }
+                          await Voice.stop().catchError((_) {});
                           if (ctx.mounted) Navigator.pop(ctx);
                         } catch (_) {
                           if (ctx.mounted) update(() => saving = false);
-                          message('Could not remove the key. Please retry.');
+                          message('Could not remove key. Please retry.');
                         }
                       },
                 child: const Text('Remove key'),
@@ -1330,7 +1882,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
               child: const Text('Cancel'),
             ),
             FilledButton(
-              onPressed: saving
+              onPressed: saving || loading
                   ? null
                   : () async {
                       if (!form.currentState!.validate()) return;
@@ -1338,15 +1890,13 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                       try {
                         await store.configureCoach(
                           model.text.trim(),
-                          apiKeyController.text.trim().isEmpty
-                              ? store.geminiKey
-                              : apiKeyController.text.trim(),
+                          apiKeyController.text.trim(),
                         );
                         if (ctx.mounted) Navigator.pop(ctx);
                       } catch (_) {
                         if (ctx.mounted) update(() => saving = false);
                         message(
-                          'Could not save the Gemini settings. Please retry.',
+                          'Could not save Gemini settings. Please retry.',
                         );
                       }
                     },
@@ -1438,7 +1988,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
               },
             ),
             const ListTile(
-              title: Text('Moneywise 1.0.1'),
+              title: Text('Moneywise 1.1.0'),
               subtitle: Text(
                 'INR · Android · Private finance companion\nEstimates support planning; they do not guarantee savings.',
               ),
@@ -1501,44 +2051,3 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 }
 
 String dateLabel(DateTime d) => '${d.day}/${d.month}/${d.year}';
-const chartColors = [
-  Color(0xff087f5b),
-  Color(0xff6c5ce7),
-  Color(0xffe17055),
-  Color(0xff0984e3),
-  Color(0xffb58b00),
-  Color(0xff636e72),
-];
-
-class SpendingPainter extends CustomPainter {
-  final List<int> values;
-  SpendingPainter(this.values);
-  @override
-  void paint(Canvas canvas, Size size) {
-    final total = values.fold(0, (int a, b) => a + b);
-    if (total == 0) return;
-    final rect = Rect.fromCircle(
-      center: size.center(Offset.zero),
-      radius: math.min(size.width, size.height) / 2 - 12,
-    );
-    var start = -math.pi / 2;
-    for (var i = 0; i < values.length; i++) {
-      final sweep = values[i] / total * math.pi * 2;
-      canvas.drawArc(
-        rect,
-        start,
-        sweep,
-        false,
-        Paint()
-          ..color = chartColors[i % chartColors.length]
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 20,
-      );
-      start += sweep;
-    }
-  }
-
-  @override
-  bool shouldRepaint(SpendingPainter oldDelegate) =>
-      !listEquals(values, oldDelegate.values);
-}
