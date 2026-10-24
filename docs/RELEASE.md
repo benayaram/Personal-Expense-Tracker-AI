@@ -14,7 +14,7 @@ flutter build apk --debug
 cd android
 ```
 
-Install an evaluation build with `adb install -r build/app/outputs/flutter-apk/app-debug.apk` from the project root. Enable notification access through the app disclosure; Android may require manually allowing restricted settings for sideloaded apps. Never instruct users to weaken device protections generally. Notification capture is optional, and manual entry remains available.
+Install an evaluation build with `adb install -r build/app/outputs/flutter-apk/app-debug.apk` from the project root. Version 1.0.1 has no notification listener or notification-access settings. Do not override Play Protect or enable restricted settings to work around an installation block.
 
 ## Production signing
 The release build deliberately has no debug-signing fallback. Create and protect your own signing key using Android's official signing workflow; do not commit the key or passwords. Losing this key can prevent future updates for sideloaded installations. Prefer Play App Signing for Play distribution.
@@ -35,7 +35,7 @@ The application ID is `app.moneywise.personal`. Confirm ownership/uniqueness bef
 ## Device acceptance checklist
 - Fresh install, opening balance, income/expense/transfer entry, editing, deleting and restart persistence.
 - Small display, large text, keyboard open, rotation, talkback and dark-system setting behavior.
-- Notifications: opt-in, supported app success alert, failed alert exclusion, repeat alert, cross-app duplicate review, process death, permission revocation and queue capacity.
+- Confirm notification-access settings and capture features are absent. Validate manual income/expense/transfer entry and restart persistence.
 - Budget overspend, overdue/completed goal, due day 31 in a short month, incomplete-month forecast warning and debt payment below interest.
 - Offline startup, offline coach fallback, invalid Gemini API key, model refusal and network timeout.
 - Backup export, validated restore, malformed restore preserving records, encrypted storage failure and deletion pausing capture.
