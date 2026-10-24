@@ -1,0 +1,133 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "demo-1",
+      "merchant": "Salary - sample",
+      "category": "Salary",
+      "paise": 6000000,
+      "date": "2026-10-01T12:00:00.000",
+      "kind": "income",
+      "sourceId": null
+    },
+    {
+      "id": "demo-2",
+      "merchant": "Rent - sample",
+      "category": "Bills",
+      "paise": 1200000,
+      "date": "2026-10-02T12:00:00.000",
+      "kind": "expense",
+      "sourceId": null
+    },
+    {
+      "id": "demo-3",
+      "merchant": "Supermarket - sample",
+      "category": "Groceries",
+      "paise": 650000,
+      "date": "2026-10-05T12:00:00.000",
+      "kind": "expense",
+      "sourceId": null
+    },
+    {
+      "id": "demo-4",
+      "merchant": "Dining - sample",
+      "category": "Dining",
+      "paise": 580000,
+      "date": "2026-10-10T12:00:00.000",
+      "kind": "expense",
+      "sourceId": null
+    },
+    {
+      "id": "demo-5",
+      "merchant": "Travel - sample",
+      "category": "Travel",
+      "paise": 240000,
+      "date": "2026-10-12T12:00:00.000",
+      "kind": "expense",
+      "sourceId": null
+    },
+    {
+      "id": "demo-6",
+      "merchant": "Shopping - sample",
+      "category": "Shopping",
+      "paise": 350000,
+      "date": "2026-10-15T12:00:00.000",
+      "kind": "expense",
+      "sourceId": null
+    },
+    {
+      "id": "demo-7",
+      "merchant": "Pharmacy - sample",
+      "category": "Health",
+      "paise": 80000,
+      "date": "2026-10-18T12:00:00.000",
+      "kind": "expense",
+      "sourceId": null
+    },
+    {
+      "id": "demo-8",
+      "merchant": "Subscriptions - sample",
+      "category": "Bills",
+      "paise": 150000,
+      "date": "2026-10-20T12:00:00.000",
+      "kind": "expense",
+      "sourceId": null
+    },
+    {
+      "id": "demo-9",
+      "merchant": "Own account transfer - sample",
+      "category": "Other",
+      "paise": 500000,
+      "date": "2026-10-21T12:00:00.000",
+      "kind": "transfer",
+      "sourceId": null
+    }
+  ],
+  "bills": [
+    {
+      "id": "demo-bill-1",
+      "name": "Mobile - sample",
+      "paise": 39900,
+      "day": 25
+    },
+    {
+      "id": "demo-bill-2",
+      "name": "Electricity - sample",
+      "paise": 210000,
+      "day": 28
+    }
+  ],
+  "categories": [
+    "Groceries",
+    "Dining",
+    "Travel",
+    "Shopping",
+    "Bills",
+    "Health",
+    "Salary",
+    "Other"
+  ],
+  "budgets": {
+    "Groceries": 800000,
+    "Dining": 400000,
+    "Travel": 500000,
+    "Shopping": 600000
+  },
+  "goals": [
+    {
+      "name": "Emergency fund - sample",
+      "target": 12000000,
+      "saved": 4500000,
+      "deadline": "2027-10-24T00:00:00.000"
+    },
+    {
+      "name": "Laptop - sample",
+      "target": 6000000,
+      "saved": 1500000,
+      "deadline": "2027-04-24T00:00:00.000"
+    }
+  ],
+  "openingBalance": 0,
+  "reservedBills": 750000,
+  "plannedSavings": 1000000
+}
