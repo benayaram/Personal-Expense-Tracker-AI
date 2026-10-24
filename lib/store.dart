@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
@@ -112,14 +111,6 @@ class AppStore extends ChangeNotifier {
     }
   }
 
-  Future<List<Map<String, dynamic>>> pending() async {
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return [];
-    final raw = await native.invokeMethod<String>('pending') ?? '[]';
-    return (jsonDecode(raw) as List)
-        .map((e) => Map<String, dynamic>.from(e))
-        .toList();
-  }
-
-  Future<void> acknowledge(String id) =>
-      native.invokeMethod<void>('ack', {'id': id});
+  Future<List<Map<String, dynamic>>> pending() async => [];
+  Future<void> acknowledge(String id) async {}
 }

@@ -24,8 +24,6 @@ jobs:
       - run: flutter analyze --fatal-infos
       - run: flutter test --coverage
       - run: flutter build apk --debug
-      - run: ./gradlew testDebugUnitTest --no-daemon
-        working-directory: android
       - uses: actions/upload-artifact@v4
         with:
           name: moneywise-debug-apk

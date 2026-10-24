@@ -1,3 +1,5 @@
+> Version 1.0.1 is a manual-entry evaluation build. The notification listener has been removed. Do not follow historical instructions to enable notification access or override Android restricted settings. Keep Play Protect enabled. Installation and Play Protect assessment require checking the new APK on the owner's device.
+
 # Android development and release
 
 ## Prerequisites
@@ -10,7 +12,6 @@ flutter analyze --fatal-infos
 flutter test --coverage
 flutter build apk --debug
 cd android
-./gradlew testDebugUnitTest --no-daemon
 ```
 
 Install an evaluation build with `adb install -r build/app/outputs/flutter-apk/app-debug.apk` from the project root. Enable notification access through the app disclosure; Android may require manually allowing restricted settings for sideloaded apps. Never instruct users to weaken device protections generally. Notification capture is optional, and manual entry remains available.

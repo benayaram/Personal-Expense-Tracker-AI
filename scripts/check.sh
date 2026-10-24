@@ -6,4 +6,3 @@ dart format --output=none --set-exit-if-changed lib test
 flutter analyze --fatal-infos
 flutter test --coverage
 flutter build apk --debug
-(cd android && ./gradlew testDebugUnitTest --no-daemon)

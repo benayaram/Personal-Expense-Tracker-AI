@@ -1,3 +1,5 @@
+> Current distribution: version 1.0.1 uses manual transaction entry. Notification capture, its service and access settings were removed after Play Protect blocked the original evaluation APK. The original notification design below describes historical scope, not a capability of this build. Keep Play Protect enabled; no Google approval or zero-risk guarantee is claimed.
+
 # Moneywise — project report and implementation brief
 
 ## Product
@@ -45,7 +47,7 @@ The user enters their own key under Settings → Gemini API settings, can select
 - Widget flows, Android compilation and physical-device checks at small/large text settings.
 
 ## Release scope and follow-up work
-The repository implements the functions described above; see VALIDATION.md for evidence of what actually ran. Features discussed as later possibilities include receipt OCR, official bank aggregation, multi-currency conversion, multiuser cloud sync, on-device generative AI and scheduled system reminder notifications. Recurring bills currently provide in-app due-date reminders. Debt planning is a calculator rather than a synced loan account. Forecasting is a transparent scenario rather than a predictive model. These limitations must remain visible in the product and release description.
+The repository implements the functions described above; see VALIDATION.md for evidence of what actually ran. Features discussed as later possibilities include notification capture through an appropriately reviewed distribution route, receipt OCR, official bank aggregation, multi-currency conversion, multiuser cloud sync, on-device generative AI and scheduled system reminder notifications. Recurring bills currently provide in-app due-date reminders. Debt planning is a calculator rather than a synced loan account. Forecasting is a transparent scenario rather than a predictive model. These limitations must remain visible in the product and release description.
 
 ## Release gates
 Do not label this release production-ready until analysis/tests/build pass, a signed release is installed and exercised on real supported Android devices, notification formats are checked against consented real examples, backup/recovery is tested, and release signing and a real-key Gemini check are completed. Store declarations are an additional gate only if publishing later. No test suite can establish that software has zero hidden bugs.

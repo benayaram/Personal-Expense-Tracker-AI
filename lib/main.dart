@@ -48,8 +48,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   String search = '';
   EntryKind? filter;
   DateTime selectedMonth = DateTime(DateTime.now().year, DateTime.now().month);
-  List<Map<String, dynamic>> captures = [];
-  bool notificationAccess = false, coachBusy = false;
+  bool coachBusy = false;
   String? coachAnswer;
   int coachEpoch = 0;
   final question = TextEditingController();
@@ -92,25 +91,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> refreshCapture() async {
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
-    try {
-      final pending = await store.pending();
-      final enabled =
-          await AppStore.native.invokeMethod<bool>('enabled') ?? false;
-      if (mounted) {
-        setState(() {
-          captures = pending;
-          notificationAccess = enabled;
-        });
-      }
-    } catch (_) {
-      message(
-        'Notification capture could not be loaded. Manual entry is available.',
-      );
-    }
-  }
-
+  Future<void> refreshCapture() async {}
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: store,
@@ -158,15 +139,6 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
             ['Moneywise', 'Activity', 'Your plan', 'Money coach'][tab],
           ),
           actions: [
-            IconButton(
-              tooltip: 'Capture inbox',
-              icon: Badge(
-                isLabelVisible: captures.isNotEmpty,
-                label: Text('${captures.length}'),
-                child: const Icon(Icons.notifications_outlined),
-              ),
-              onPressed: captureInbox,
-            ),
             IconButton(
               tooltip: 'Settings and privacy',
               onPressed: settings,
@@ -283,16 +255,6 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         amountRow('Tracked balance · all time', ledger.balance),
       ]),
       panel('Spending by category', spendingChart(DateTime.now())),
-      if (captures.isNotEmpty)
-        panel('Ready to review', [
-          Text(
-            '${captures.length} notification candidates. Nothing is added without your confirmation.',
-          ),
-          TextButton(
-            onPressed: captureInbox,
-            child: const Text('Review captures'),
-          ),
-        ]),
       panel(
         'Recent activity',
         ledger.entries.isEmpty
@@ -1399,89 +1361,6 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     model.dispose();
   }
 
-  Future<void> captureInbox() async {
-    await refreshCapture();
-    if (!mounted) return;
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) => SafeArea(
-        child: SizedBox(
-          height: MediaQuery.sizeOf(ctx).height * .8,
-          child: ListView(
-            padding: const EdgeInsets.all(20),
-            children: [
-              Text(
-                'Capture inbox',
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'Optional Android notification access can expose notifications from other apps. Moneywise only processes supported bank/payment alerts on-device. Candidates need review; cash and missing alerts need manual entry.',
-              ),
-              TextButton(
-                onPressed: () async {
-                  Navigator.pop(ctx);
-                  await permissionDialog();
-                },
-                child: Text(
-                  notificationAccess
-                      ? 'Manage notification access'
-                      : 'Enable notification capture',
-                ),
-              ),
-              if (captures.isEmpty)
-                empty(
-                  'No pending captures. New supported alerts appear here after permission is enabled.',
-                ),
-              ...captures.map(
-                (c) => Card(
-                  child: ListTile(
-                    title: Text(
-                      '${c['merchant']} · ${money((c['paise'] as num).toInt())}',
-                    ),
-                    subtitle: Text(
-                      '${c['kind']} · ${dateLabel(DateTime.fromMillisecondsSinceEpoch((c['timestamp'] as num).toInt()))}\nReview for duplicate payment alerts.',
-                    ),
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      editEntry(capture: c);
-                    },
-                    trailing: IconButton(
-                      tooltip: 'Dismiss capture',
-                      icon: const Icon(Icons.close),
-                      onPressed: () async {
-                        await perform(
-                          () => store.acknowledge(c['id'] as String),
-                        );
-                        await refreshCapture();
-                        if (ctx.mounted) Navigator.pop(ctx);
-                      },
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> permissionDialog() async {
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
-      message('Notification capture is available on Android only.');
-      return;
-    }
-    if (!await confirm(
-      'Allow notification capture?',
-      'Android grants notification access broadly. Moneywise filters supported bank and payment apps, stores only parsed transaction candidates in encrypted local storage, and never sends notification text to AI. You can revoke access in Android settings at any time.',
-    )) {
-      return;
-    }
-    await perform(() => AppStore.native.invokeMethod<void>('settings'));
-  }
-
   Future<void> settings() async {
     await showModalBottomSheet<void>(
       context: context,
@@ -1502,14 +1381,6 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
               subtitle: Text(
                 'Encrypted device storage. Android cloud backup is disabled. Keep your own backup; uninstalling or losing your phone can lose your records. No bank credentials or payment permissions are requested.',
               ),
-            ),
-            ListTile(
-              title: const Text('Notification access'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                Navigator.pop(ctx);
-                permissionDialog();
-              },
             ),
             ListTile(
               title: const Text('Gemini API settings'),
@@ -1567,7 +1438,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
               },
             ),
             const ListTile(
-              title: Text('Moneywise 1.0.0'),
+              title: Text('Moneywise 1.0.1'),
               subtitle: Text(
                 'INR · Android · Private finance companion\nEstimates support planning; they do not guarantee savings.',
               ),
